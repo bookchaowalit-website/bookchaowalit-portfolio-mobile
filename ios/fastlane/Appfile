@@ -1,3 +1,3 @@
-app_identifier("com.bookchaowalit.bookchaowalitPortfolioMobile")
+app_identifier("com.bookchaowalit.portfolio")
 apple_id(ENV["APPLE_ID"]) # your Apple Developer account email, set as a repo secret
 team_id(ENV["APPLE_TEAM_ID"]) # found in App Store Connect > Membership, set as a repo secret
