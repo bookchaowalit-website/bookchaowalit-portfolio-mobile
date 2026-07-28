@@ -1,0 +1,2 @@
+json_key_file(ENV["GOOGLE_PLAY_JSON_KEY_PATH"]) # path to the service-account key, written by CI from a secret
+package_name("com.bookchaowalit.bookchaowalit_portfolio_mobile")

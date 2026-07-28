@@ -1,0 +1,21 @@
+default_platform(:ios)
+
+platform :ios do
+  desc "Upload the already-built IPA to TestFlight"
+  desc "Free: TestFlight beta distribution needs no App Review, up to 10,000 testers."
+  lane :beta do
+    api_key = app_store_connect_api_key(
+      key_id: ENV["APP_STORE_CONNECT_KEY_ID"],
+      issuer_id: ENV["APP_STORE_CONNECT_ISSUER_ID"],
+      key_content: ENV["APP_STORE_CONNECT_KEY_CONTENT"],
+      is_key_content_base64: true
+    )
+
+    pilot(
+      api_key: api_key,
+      ipa: Dir.glob("../build/ios/ipa/*.ipa").first,
+      skip_waiting_for_build_processing: true,
+      skip_submission: true
+    )
+  end
+end

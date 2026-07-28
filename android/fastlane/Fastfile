@@ -1,0 +1,16 @@
+default_platform(:android)
+
+platform :android do
+  desc "Upload the already-built release AAB to the Google Play Internal Testing track"
+  desc "Free: no Play Console review needed for internal testing, up to 100 testers."
+  lane :internal do
+    supply(
+      track: "internal",
+      aab: "../build/app/outputs/bundle/release/app-release.aab",
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      release_status: "completed"
+    )
+  end
+end

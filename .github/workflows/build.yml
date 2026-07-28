@@ -1,0 +1,224 @@
+name: Build & Release Mobile Apps
+
+on:
+  push:
+    branches: [main, master]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Android Build (AAB for Google Play)
+  # ─────────────────────────────────────────────
+  build-android:
+    name: Build Android AAB
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Run tests
+        run: flutter test
+
+      # All Android signing + Play publishing secrets live in Infisical under
+      # /google-play (not raw GitHub Secrets) — only the two bootstrap
+      # credentials below are GitHub Secrets. See
+      # docs/projects/bookchaowalit-portfolio-mobile/PUBLISHING-SETUP.md
+      - name: Fetch secrets from Infisical (/google-play)
+        id: infisical-android
+        if: secrets.INFISICAL_CLIENT_ID != ''
+        uses: Infisical/secrets-action@v1.0.0
+        with:
+          client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
+          client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+          project-id: d0d84520-c3d0-48da-980c-a987c3077122
+          env-slug: dev
+          secret-path: "/google-play"
+          export-type: env
+
+      - name: Decode Android keystore
+        if: env.ANDROID_KEYSTORE_BASE64 != '' && env.ANDROID_KEYSTORE_BASE64 != 'REPLACE_ME'
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/upload-keystore.jks
+          echo "storePassword=$ANDROID_KEY_PASSWORD" > android/key.properties
+          echo "keyPassword=$ANDROID_KEY_PASSWORD" >> android/key.properties
+          echo "keyAlias=upload" >> android/key.properties
+          echo "storeFile=upload-keystore.jks" >> android/key.properties
+
+      - name: Build Android App Bundle
+        run: |
+          if [ -f android/app/upload-keystore.jks ]; then
+            flutter build appbundle --release
+          else
+            echo "No real keystore available (Infisical secret is unset or still a REPLACE_ME placeholder) — building debug instead"
+            flutter build appbundle --debug
+          fi
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-aab
+          path: build/app/outputs/bundle/release/*.aab
+          if-no-files-found: warn
+
+      # Free path: Play internal testing track needs no store review,
+      # just a Google Play Developer account (one-time $25) and a
+      # service-account key stored in Infisical at /google-play/GOOGLE_PLAY_JSON_KEY.
+      - name: Setup Ruby (for fastlane)
+        if: startsWith(github.ref, 'refs/tags/') && env.GOOGLE_PLAY_JSON_KEY != '' && env.GOOGLE_PLAY_JSON_KEY != 'REPLACE_ME'
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+
+      - name: Decode Google Play service-account key
+        if: startsWith(github.ref, 'refs/tags/') && env.GOOGLE_PLAY_JSON_KEY != '' && env.GOOGLE_PLAY_JSON_KEY != 'REPLACE_ME'
+        run: echo "$GOOGLE_PLAY_JSON_KEY" > "$RUNNER_TEMP/play-key.json"
+
+      - name: Publish to Play Store (internal testing track)
+        if: startsWith(github.ref, 'refs/tags/') && env.GOOGLE_PLAY_JSON_KEY != '' && env.GOOGLE_PLAY_JSON_KEY != 'REPLACE_ME'
+        env:
+          GOOGLE_PLAY_JSON_KEY_PATH: ${{ runner.temp }}/play-key.json
+        working-directory: android
+        run: bundle exec fastlane internal
+
+  # ─────────────────────────────────────────────
+  # iOS Build (IPA for App Store)
+  # ─────────────────────────────────────────────
+  build-ios:
+    name: Build iOS IPA
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: .
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Run tests
+        run: flutter test
+
+      # All iOS signing + TestFlight publishing secrets live in Infisical
+      # under /apple (not raw GitHub Secrets) — only the two bootstrap
+      # credentials below are GitHub Secrets. See
+      # docs/projects/bookchaowalit-portfolio-mobile/PUBLISHING-SETUP.md
+      - name: Fetch secrets from Infisical (/apple)
+        id: infisical-ios
+        if: secrets.INFISICAL_CLIENT_ID != ''
+        uses: Infisical/secrets-action@v1.0.0
+        with:
+          client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
+          client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+          project-id: d0d84520-c3d0-48da-980c-a987c3077122
+          env-slug: dev
+          secret-path: "/apple"
+          export-type: env
+
+      - name: Install Apple Certificate and Provisioning Profile
+        if: env.IOS_DISTRIBUTION_CERTIFICATE_BASE64 != '' && env.IOS_DISTRIBUTION_CERTIFICATE_BASE64 != 'REPLACE_ME'
+        run: |
+          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
+          PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+
+          echo -n "$IOS_DISTRIBUTION_CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
+          echo -n "$IOS_PROVISIONING_PROFILE_BASE64" | base64 --decode -o $PP_PATH
+
+          security create-keychain -p "$IOS_KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$IOS_KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          security import $CERTIFICATE_PATH -P "$IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles
+
+      - name: Build iOS IPA (unsigned if no certs)
+        run: |
+          if [ -f "$RUNNER_TEMP/build_certificate.p12" ]; then
+            flutter build ipa --release
+          else
+            echo "No real certificate available (Infisical secret is unset or still a REPLACE_ME placeholder) — building unsigned"
+            flutter build ios --release --no-codesign
+          fi
+
+      - name: Upload iOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          path: |
+            build/ios/ipa/*.ipa
+            build/ios/archive/*.xcarchive
+          if-no-files-found: warn
+
+      # Free path: TestFlight beta needs no App Review, just an active
+      # Apple Developer Program membership ($99/yr — unavoidable, Apple
+      # requires it for any device install) and the App Store Connect API
+      # key stored in Infisical at /apple.
+      - name: Setup Ruby (for fastlane)
+        if: startsWith(github.ref, 'refs/tags/') && env.APP_STORE_CONNECT_KEY_ID != '' && env.APP_STORE_CONNECT_KEY_ID != 'REPLACE_ME'
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+
+      - name: Publish to TestFlight
+        if: startsWith(github.ref, 'refs/tags/') && env.APP_STORE_CONNECT_KEY_ID != '' && env.APP_STORE_CONNECT_KEY_ID != 'REPLACE_ME'
+        working-directory: ios
+        run: bundle exec fastlane beta
+
+  # ─────────────────────────────────────────────
+  # Release (only on tags)
+  # ─────────────────────────────────────────────
+  release:
+    name: Create GitHub Release
+    needs: [build-android, build-ios]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/**/*.aab
+            artifacts/**/*.ipa
+          generate_release_notes: true
