@@ -175,7 +175,7 @@ jobs:
       - name: Build iOS IPA (unsigned if no certs)
         run: |
           if [ -f "$RUNNER_TEMP/build_certificate.p12" ]; then
-            flutter build ipa --release
+            flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
           else
             echo "No real certificate available (Infisical secret is unset or still a REPLACE_ME placeholder) — building unsigned"
             flutter build ios --release --no-codesign
