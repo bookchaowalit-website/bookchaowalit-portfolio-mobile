@@ -57,7 +57,7 @@ jobs:
         with:
           client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
           client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
-          project-id: d0d84520-c3d0-48da-980c-a987c3077122
+          project-slug: solo-empire
           env-slug: dev
           secret-path: "/google-play"
           export-type: env
@@ -147,7 +147,7 @@ jobs:
         with:
           client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
           client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
-          project-id: d0d84520-c3d0-48da-980c-a987c3077122
+          project-slug: solo-empire
           env-slug: dev
           secret-path: "/apple"
           export-type: env
