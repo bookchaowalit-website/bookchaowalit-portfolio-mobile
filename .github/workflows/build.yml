@@ -19,6 +19,10 @@ jobs:
     defaults:
       run:
         working-directory: .
+    env:
+      # `if:` conditions can't reference `secrets` directly (GitHub restriction) —
+      # capture presence here once, check `env.HAS_INFISICAL` in steps instead.
+      HAS_INFISICAL: ${{ secrets.INFISICAL_CLIENT_ID != '' }}
 
     steps:
       - name: Checkout repository
@@ -48,7 +52,7 @@ jobs:
       # docs/projects/bookchaowalit-portfolio-mobile/PUBLISHING-SETUP.md
       - name: Fetch secrets from Infisical (/google-play)
         id: infisical-android
-        if: secrets.INFISICAL_CLIENT_ID != ''
+        if: env.HAS_INFISICAL == 'true'
         uses: Infisical/secrets-action@v1.0.0
         with:
           client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
@@ -113,6 +117,8 @@ jobs:
     defaults:
       run:
         working-directory: .
+    env:
+      HAS_INFISICAL: ${{ secrets.INFISICAL_CLIENT_ID != '' }}
 
     steps:
       - name: Checkout repository
@@ -136,7 +142,7 @@ jobs:
       # docs/projects/bookchaowalit-portfolio-mobile/PUBLISHING-SETUP.md
       - name: Fetch secrets from Infisical (/apple)
         id: infisical-ios
-        if: secrets.INFISICAL_CLIENT_ID != ''
+        if: env.HAS_INFISICAL == 'true'
         uses: Infisical/secrets-action@v1.0.0
         with:
           client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
