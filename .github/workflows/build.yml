@@ -204,7 +204,11 @@ jobs:
       - name: Publish to TestFlight
         if: startsWith(github.ref, 'refs/tags/') && env.APP_STORE_CONNECT_KEY_ID != '' && env.APP_STORE_CONNECT_KEY_ID != 'REPLACE_ME'
         working-directory: ios
-        run: bundle exec fastlane beta
+        run: |
+          export IPA_PATH="$(find "$GITHUB_WORKSPACE/build/ios/ipa" -name '*.ipa' -print -quit)"
+          echo "Resolved IPA_PATH=$IPA_PATH"
+          test -n "$IPA_PATH" || { echo "::error::No .ipa found under build/ios/ipa"; exit 1; }
+          bundle exec fastlane beta
 
   # ─────────────────────────────────────────────
   # Release (only on tags)
